@@ -7,6 +7,8 @@ Created on 30 сент. 2013 г.
 
 import wx
 import wx.aui
+import os
+import finfo
 
 #----------------------------------------------------------------------
 
@@ -159,9 +161,20 @@ class MyPanel1 ( wx.Panel ):
         self.m_button3.Bind( wx.EVT_BUTTON, self.onStop )
     
     def __del__( self ):
-        pass
+        print("закрываюся...")
     
+    def progress(self):
+#         walk(self.m_dirPicker2.Path)
+        test = finfo.disk_usage(self.m_dirPicker2.Path)
+        print finfo.bytes2human(test.total)
+        print finfo.bytes2human(test.used)
+        print finfo.bytes2human(test.free)
+        report = finfo.dtstat(self.m_dirPicker2.Path)
+        print report
     
+
+    
+          
     # Virtual event handlers, overide them in your derived class
     def onClosePane( self, event ):
         print(u"Закрываю панель2")
@@ -172,7 +185,7 @@ class MyPanel1 ( wx.Panel ):
 #             self.Parent.Parent.Parent.PushStatusText(u"Нужно выбрать каталог!")
             app.pf.PushStatusText(u"Нужно выбрать каталог!")
         else:
-            print("Start")
+            self.progress()
         event.Skip()
     
     def onStop( self, event ):
@@ -190,6 +203,8 @@ class MyApp(wx.App):
 
     def OnExit(self):
         print("exit")
+
+#----------------------------------------------------------------------
 
 if __name__ == '__main__':
     app = MyApp()
