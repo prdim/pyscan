@@ -62,13 +62,17 @@ def getlocaldata(sms,dr,flst):
         else:
             sms[2] += 1
             
-def walk(d):
-    for name in os.listdir(d):
+def walk(d, func):
+    try:
+        lst = os.listdir(d)
+    except os.error:
+        return
+    for name in lst:
         path = os.path.join(d, name)
         if os.path.isfile(path):
-            print path
+            func(path)
         else:
-            walk(path)
+            walk(path, func)
 
 def dtstat(dtroot):
     sums = [0,0,1] # 0 bytes, 0 files, 1 directory so far

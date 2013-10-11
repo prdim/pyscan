@@ -9,6 +9,9 @@ import wx
 import wx.aui
 import os
 import finfo
+import threading
+import datetime
+import time
 
 #----------------------------------------------------------------------
 
@@ -121,11 +124,18 @@ class MyPanel1 ( wx.Panel ):
         
         bSizer3 = wx.BoxSizer( wx.HORIZONTAL )
         
-        self.m_staticText4 = wx.StaticText( self, wx.ID_ANY, u"Статус...", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self.m_staticText4 = wx.StaticText( self, wx.ID_ANY, u" ", wx.DefaultPosition, wx.DefaultSize, 0 )
         self.m_staticText4.Wrap( -1 )
         bSizer3.Add( self.m_staticText4, 1, wx.ALL, 5 )
         
         
+        bSizer1.Add( bSizer3, 0, wx.EXPAND, 5 )
+        
+        bSizer3 = wx.BoxSizer( wx.HORIZONTAL )
+        self.m_staticText41 = wx.StaticText( self, wx.ID_ANY, u" ", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self.m_staticText41.Wrap( -1 )
+        bSizer3.Add( self.m_staticText41, 1, wx.ALL, 5 )
+                
         bSizer1.Add( bSizer3, 0, wx.EXPAND, 5 )
         
         bSizer4 = wx.BoxSizer( wx.HORIZONTAL )
@@ -159,21 +169,65 @@ class MyPanel1 ( wx.Panel ):
 #         self.Bind( wx.EVT_CLOSE, self.onClosePane )
         self.m_button2.Bind( wx.EVT_BUTTON, self.onStart )
         self.m_button3.Bind( wx.EVT_BUTTON, self.onStop )
+        
+        self.isStart = False
+        self.t_files = 0
+        self.s_files = 0
+        self.s_files_e = 0
+        self.t_time = 0
+        self.s_time = 0
+#         self.d_time = 0
     
     def __del__( self ):
         print("закрываюся...")
+        if self.isStart:
+            self.isStart = False
+            self.th.join()
     
     def progress(self):
-#         walk(self.m_dirPicker2.Path)
+        self.t_files = 0
+        self.s_files = 0
+        self.t_time = time.time()
+        self.s_time = self.t_time
         test = finfo.disk_usage(self.m_dirPicker2.Path)
+        self.s_files_e = test.used
         print finfo.bytes2human(test.total)
         print finfo.bytes2human(test.used)
         print finfo.bytes2human(test.free)
-        report = finfo.dtstat(self.m_dirPicker2.Path)
-        print report
-    
+        self.walk(self.m_dirPicker2.Path, checkFile)
+        self.isStart = False
+        self.m_staticText4.SetLabelText(u"Завершено успешно.")
+        
+    def progressUpdate(self, path):
+        if (time.time() - self.t_time) > 1:
+            self.m_staticText4.SetLabelText(path)
+            self.m_staticText41.SetLabelText(u"Обработано файлов: %i, скорость: %i файлов/сек, время: " % 
+                                             (self.t_files,
+                                              self.t_files/(time.time()-self.s_time)) +
+                                            time.strftime("%M:%S", time.localtime(time.time()-self.s_time)))
+            self.m_gauge2.SetValue((self.s_files*100)/self.s_files_e)
+            self.t_time = time.time()
+#             self.d_files = self.t_files
 
-    
+    def walk(self, d, func):
+        try:
+            lst = os.listdir(d)
+        except os.error:
+            return
+        for name in lst:
+            if self.isStart == False:
+                return
+            path = os.path.join(d, name)
+            if os.path.isfile(path):
+#                 func(path)
+                stat = os.stat(path)
+                self.s_files += stat.st_size
+                self.t_files += 1
+#                 self.m_staticText4.SetLabelText(path)
+#                 self.m_staticText41.SetLabelText(u"Обработано файлов: %i" % self.t_files)
+                self.progressUpdate(path)
+            else:
+                self.walk(path, func)
           
     # Virtual event handlers, overide them in your derived class
     def onClosePane( self, event ):
@@ -181,16 +235,28 @@ class MyPanel1 ( wx.Panel ):
         event.Skip()
     
     def onStart( self, event ):
+        if self.isStart:
+            app.pf.PushStatusText(u"Процесс уже запущен!")
+            return
         if self.m_dirPicker2.Path == u"":
 #             self.Parent.Parent.Parent.PushStatusText(u"Нужно выбрать каталог!")
             app.pf.PushStatusText(u"Нужно выбрать каталог!")
         else:
-            self.progress()
+            self.th = threading.Thread(target=self.progress)
+            self.isStart = True
+            self.th.start()
         event.Skip()
     
     def onStop( self, event ):
+        self.isStart = False
         print("Stop")
         event.Skip()
+
+#----------------------------------------------------------------------
+
+def checkFile(path):
+    stat = os.stat(path)
+#     print path, stat.st_size, stat.st_atime, stat.st_mtime, stat.st_ctime
 
 #----------------------------------------------------------------------
 
