@@ -196,12 +196,12 @@ class MyPanel1 ( wx.Panel ):
         print finfo.bytes2human(test.free)
         self.walk(self.m_dirPicker2.Path, checkFile)
         self.isStart = False
-        self.m_staticText4.SetLabelText(u"Завершено успешно.")
+        self.m_staticText4.SetLabel(u"Завершено успешно.")
         
     def progressUpdate(self, path):
         if (time.time() - self.t_time) > 1:
-            self.m_staticText4.SetLabelText(path)
-            self.m_staticText41.SetLabelText(u"Обработано файлов: %i, скорость: %i файлов/сек, время: " % 
+            self.m_staticText4.SetLabel(path)
+            self.m_staticText41.SetLabel(u"Обработано файлов: %i, скорость: %i файлов/сек, время: " % 
                                              (self.t_files,
                                               self.t_files/(time.time()-self.s_time)) +
                                             time.strftime("%M:%S", time.localtime(time.time()-self.s_time)))
@@ -238,7 +238,8 @@ class MyPanel1 ( wx.Panel ):
         if self.isStart:
             app.pf.PushStatusText(u"Процесс уже запущен!")
             return
-        if self.m_dirPicker2.Path == u"":
+        print self.m_dirPicker2.GetPath()
+        if self.m_dirPicker2.GetPath() == "":
 #             self.Parent.Parent.Parent.PushStatusText(u"Нужно выбрать каталог!")
             app.pf.PushStatusText(u"Нужно выбрать каталог!")
         else:
