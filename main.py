@@ -12,6 +12,7 @@ import finfo
 import threading
 import datetime
 import time
+import sqlite3 as db
 
 #----------------------------------------------------------------------
 
@@ -177,6 +178,7 @@ class MyPanel1 ( wx.Panel ):
         self.t_time = 0
         self.s_time = 0
 #         self.d_time = 0
+        self.conn = None
     
     def __del__( self ):
         print("закрываюся...")
@@ -194,14 +196,17 @@ class MyPanel1 ( wx.Panel ):
         print finfo.bytes2human(test.total)
         print finfo.bytes2human(test.used)
         print finfo.bytes2human(test.free)
-        self.walk(self.m_dirPicker2.Path, checkFile)
+        self.conn = openDb()
+        id = addVariant(self.conn, self.m_dirPicker2.Path)
+        self.walk(self.m_dirPicker2.Path, id)
         self.isStart = False
-        self.m_staticText4.SetLabelText(u"Завершено успешно.")
+        self.conn.close()
+        self.m_staticText4.SetLabel(u"Завершено успешно.")
         
     def progressUpdate(self, path):
         if (time.time() - self.t_time) > 1:
-            self.m_staticText4.SetLabelText(path)
-            self.m_staticText41.SetLabelText(u"Обработано файлов: %i, скорость: %i файлов/сек, время: " % 
+            self.m_staticText4.SetLabel(path)
+            self.m_staticText41.SetLabel(u"Обработано файлов: %i, скорость: %i файлов/сек, время: " % 
                                              (self.t_files,
                                               self.t_files/(time.time()-self.s_time)) +
                                             time.strftime("%M:%S", time.localtime(time.time()-self.s_time)))
@@ -209,7 +214,7 @@ class MyPanel1 ( wx.Panel ):
             self.t_time = time.time()
 #             self.d_files = self.t_files
 
-    def walk(self, d, func):
+    def walk(self, d, id):
         try:
             lst = os.listdir(d)
         except os.error:
@@ -217,17 +222,20 @@ class MyPanel1 ( wx.Panel ):
         for name in lst:
             if self.isStart == False:
                 return
+            pname = os.path
             path = os.path.join(d, name)
             if os.path.isfile(path):
 #                 func(path)
                 stat = os.stat(path)
+                addFile(self.conn,(id, path, name, pname, stat.st_size, 
+                                   stat.st_atime, stat.st_mtime, stat.st_ctime))
                 self.s_files += stat.st_size
                 self.t_files += 1
 #                 self.m_staticText4.SetLabelText(path)
 #                 self.m_staticText41.SetLabelText(u"Обработано файлов: %i" % self.t_files)
                 self.progressUpdate(path)
             else:
-                self.walk(path, func)
+                self.walk(path, id)
           
     # Virtual event handlers, overide them in your derived class
     def onClosePane( self, event ):
@@ -253,6 +261,52 @@ class MyPanel1 ( wx.Panel ):
         event.Skip()
 
 #----------------------------------------------------------------------
+
+def openDb():
+    conn = db.connect("db\\files.db")
+#     c = conn.cursor()
+#     rows = c.execute("""select * from sqlite_master where type = 'table'""").fetchall()
+#     if len(rows) == 0:
+    conn.execute("""create table if not exists variant (
+        id int primary key not null,
+        path text not null,
+        dt text not null,
+        start int,
+        stop int);""")
+    conn.execute("""create table if not exists files (
+        variant_id int not null,
+        path text,
+        fname text,
+        fparent text,
+        size int,
+        atime int,
+        mtime int,
+        ctime int);""")
+    return conn
+
+def addVariant(conn, basePath):
+    c = conn.cursor()
+    rows = c.execute("""select max(id) from variant""").fetchone()
+    if rows[0] == None:
+        id = 1
+    else:
+        id = rows[0] + 1
+    print rows, id
+    c.execute("""insert into variant(id, path, dt, start) values(?,?,?,?);""",
+              (id,
+               basePath,
+               db.Date.today(),
+               time.time()))
+    conn.commit()
+    c.close
+    return id
+
+def addFile(conn, dt):
+    c = conn.cursor()
+    c.execute("""insert into files
+        (variant_id, path, fname, fparent, size, atime, mtime, ctime) 
+        values (?,?,?,?,?,?,?,?);""", dt)
+    conn.commit()
 
 def checkFile(path):
     stat = os.stat(path)
