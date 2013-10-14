@@ -200,7 +200,10 @@ class MyPanel1 ( wx.Panel ):
         id = addVariant(self.conn, self.m_dirPicker2.Path)
         self.walk(self.m_dirPicker2.Path, id)
         self.isStart = False
+<<<<<<< HEAD
         self.conn.close()
+=======
+>>>>>>> e6240ac830028977aeb3b79ec3911fa5a278859d
         self.m_staticText4.SetLabel(u"Завершено успешно.")
         
     def progressUpdate(self, path):
@@ -246,7 +249,8 @@ class MyPanel1 ( wx.Panel ):
         if self.isStart:
             app.pf.PushStatusText(u"Процесс уже запущен!")
             return
-        if self.m_dirPicker2.Path == u"":
+        print self.m_dirPicker2.GetPath()
+        if self.m_dirPicker2.GetPath() == "":
 #             self.Parent.Parent.Parent.PushStatusText(u"Нужно выбрать каталог!")
             app.pf.PushStatusText(u"Нужно выбрать каталог!")
         else:
