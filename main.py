@@ -7,6 +7,7 @@ Created on 30 сент. 2013 г.
 
 import wx
 import wx.aui
+import wx.grid
 import os
 import finfo
 import threading
@@ -33,8 +34,10 @@ class ParentFrame(wx.aui.AuiMDIParentFrame):
     def MakeMenuBar(self):
         mb = wx.MenuBar()
         menu = wx.Menu()
-        item = menu.Append(-1, "New child window\tCtrl-N")
+        item = menu.Append(-1, "Сканер\tCtrl-N")
         self.Bind(wx.EVT_MENU, self.OnNewChild, item)
+        item = menu.Append(-1, "Варианты\tCtrl-M")
+        self.Bind(wx.EVT_MENU, self.OnVariantView, item)
         item = menu.Append(-1, "Close parent")
         self.Bind(wx.EVT_MENU, self.OnDoClose, item)
         menu.AppendSeparator()
@@ -51,6 +54,11 @@ class ParentFrame(wx.aui.AuiMDIParentFrame):
     def OnNewChild(self, evt):
         self.count += 1
         child = ChildFrame(self, self.count)
+        child.Activate()
+        
+    def OnVariantView(self, evt):
+        self.count += 1
+        child = VariantViewFrame(self, self.count)
         child.Activate()
 
     def OnDoClose(self, evt):
@@ -79,7 +87,7 @@ class ParentFrame(wx.aui.AuiMDIParentFrame):
 class ChildFrame(wx.aui.AuiMDIChildFrame):
     def __init__(self, parent, count):
         wx.aui.AuiMDIChildFrame.__init__(self, parent, -1,
-                                         title="Child: %d" % count)
+                                         title="Сканер: %d" % count)
 #         mb = parent.MakeMenuBar()
 #         menu = wx.Menu()
 #         item = menu.Append(-1, "This is child %d's menu" % count)
@@ -101,6 +109,52 @@ class ChildFrame(wx.aui.AuiMDIChildFrame):
 #     def onClosePane( self, event ):
 #         print(u"Закрываю панель")
 #         event.Skip()        
+
+#----------------------------------------------------------------------
+
+class VariantViewFrame(wx.aui.AuiMDIChildFrame):
+    def __init__(self, parent, count):
+        wx.aui.AuiMDIChildFrame.__init__(self, parent, -1,
+                                         title="Варианты: %d" % count)
+        sizer_h = wx.BoxSizer(wx.HORIZONTAL)
+        button = wx.Button( self, wx.ID_ANY, u"Обновить", wx.DefaultPosition, wx.DefaultSize, 0 )
+        button.Bind(wx.EVT_BUTTON, self.onRefresh)
+        sizer_h.Add(button, 0, wx.ALL, 5)
+        
+        sizer_v = wx.BoxSizer(wx.VERTICAL)
+        sizer_v.Add(sizer_h, 0, wx.EXPAND, 5)
+        #SELECT t1.id, t1.path, t1.dt, t1.start, t1.stop, t2.cnt  FROM variant as t1, (select variant_id, count(*) as cnt from files group by variant_id) as t2 where t1.id=t2.variant_id
+        #SELECT t1.id, t1.path, t1.dt, t1.start, t1.stop, t2.cnt  FROM variant as t1 left join (select variant_id, count(*) as cnt from files group by variant_id) as t2 on t1.id=t2.variant_id
+        self.m_grid1 = wx.grid.Grid( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, 0 )
+        # Grid
+        self.m_grid1.CreateGrid( 5, 5 )
+        self.m_grid1.EnableEditing( True )
+        self.m_grid1.EnableGridLines( True )
+        self.m_grid1.EnableDragGridSize( False )
+        self.m_grid1.SetMargins( 0, 0 )
+        
+        # Columns
+        self.m_grid1.EnableDragColMove( False )
+        self.m_grid1.EnableDragColSize( True )
+        self.m_grid1.SetColLabelSize( 30 )
+        self.m_grid1.SetColLabelAlignment( wx.ALIGN_CENTRE, wx.ALIGN_CENTRE )
+        
+        # Rows
+        self.m_grid1.EnableDragRowSize( True )
+        self.m_grid1.SetRowLabelSize( 80 )
+        self.m_grid1.SetRowLabelAlignment( wx.ALIGN_CENTRE, wx.ALIGN_CENTRE )
+        
+        # Label Appearance
+        
+        # Cell Defaults
+        self.m_grid1.SetDefaultCellAlignment( wx.ALIGN_LEFT, wx.ALIGN_TOP )
+        sizer_v.Add( self.m_grid1, 1, wx.ALL|wx.EXPAND, 5 ) 
+        
+        self.SetSizer(sizer_v)
+        self.Layout()       
+
+    def onRefresh(self, evt):
+        pass
 
 #----------------------------------------------------------------------
 
@@ -191,6 +245,8 @@ class MyPanel1 ( wx.Panel ):
         self.s_files = 0
         self.t_time = time.time()
         self.s_time = self.t_time
+        global dt_list
+        dt_list = []
         test = finfo.disk_usage(self.m_dirPicker2.Path)
         self.s_files_e = test.used
         print finfo.bytes2human(test.total)
@@ -200,22 +256,24 @@ class MyPanel1 ( wx.Panel ):
         id = addVariant(self.conn, self.m_dirPicker2.Path)
         self.walk(self.m_dirPicker2.Path, id)
         self.isStart = False
-<<<<<<< HEAD
+        addFileFlush(self.conn)
+        updateVariant(self.conn, id, time.time())
+        self.progressUpdateNow(self.m_dirPicker2.Path)
         self.conn.close()
-=======
->>>>>>> e6240ac830028977aeb3b79ec3911fa5a278859d
         self.m_staticText4.SetLabel(u"Завершено успешно.")
         
     def progressUpdate(self, path):
         if (time.time() - self.t_time) > 1:
-            self.m_staticText4.SetLabel(path)
-            self.m_staticText41.SetLabel(u"Обработано файлов: %i, скорость: %i файлов/сек, время: " % 
-                                             (self.t_files,
-                                              self.t_files/(time.time()-self.s_time)) +
-                                            time.strftime("%M:%S", time.localtime(time.time()-self.s_time)))
-            self.m_gauge2.SetValue((self.s_files*100)/self.s_files_e)
+            self.progressUpdateNow(path)
             self.t_time = time.time()
 #             self.d_files = self.t_files
+    def progressUpdateNow(self, path):
+        self.m_staticText4.SetLabel(path)
+        self.m_staticText41.SetLabel(u"Обработано файлов: %i, скорость: %i файлов/сек, время: " % 
+                                         (self.t_files,
+                                          self.t_files/(time.time()-self.s_time)) +
+                                        time.strftime("%M:%S", time.localtime(time.time()-self.s_time)))
+        self.m_gauge2.SetValue((self.s_files*100)/self.s_files_e)        
 
     def walk(self, d, id):
         try:
@@ -225,12 +283,10 @@ class MyPanel1 ( wx.Panel ):
         for name in lst:
             if self.isStart == False:
                 return
-            pname = os.path
             path = os.path.join(d, name)
             if os.path.isfile(path):
-#                 func(path)
                 stat = os.stat(path)
-                addFile(self.conn,(id, path, name, pname, stat.st_size, 
+                addFile(self.conn,(id, path, name, d, stat.st_size, 
                                    stat.st_atime, stat.st_mtime, stat.st_ctime))
                 self.s_files += stat.st_size
                 self.t_files += 1
@@ -249,8 +305,7 @@ class MyPanel1 ( wx.Panel ):
         if self.isStart:
             app.pf.PushStatusText(u"Процесс уже запущен!")
             return
-        print self.m_dirPicker2.GetPath()
-        if self.m_dirPicker2.GetPath() == "":
+        if self.m_dirPicker2.Path == u"":
 #             self.Parent.Parent.Parent.PushStatusText(u"Нужно выбрать каталог!")
             app.pf.PushStatusText(u"Нужно выбрать каталог!")
         else:
@@ -305,12 +360,25 @@ def addVariant(conn, basePath):
     c.close
     return id
 
-def addFile(conn, dt):
-    c = conn.cursor()
-    c.execute("""insert into files
-        (variant_id, path, fname, fparent, size, atime, mtime, ctime) 
-        values (?,?,?,?,?,?,?,?);""", dt)
+def updateVariant(conn, id, t):
+    conn.execute("""update variant set stop=? where id=?""", (t, id))
     conn.commit()
+
+dt_list = []
+def addFile(conn, dt):
+    global dt_list
+#     c = conn.cursor()
+    dt_list.append(dt)
+    if len(dt_list) >100:
+        addFileFlush(conn)
+    
+def addFileFlush(conn):
+    global dt_list
+    conn.executemany("""insert into files
+        (variant_id, path, fname, fparent, size, atime, mtime, ctime) 
+        values (?,?,?,?,?,?,?,?);""", dt_list)
+    conn.commit()
+    dt_list = []
 
 def checkFile(path):
     stat = os.stat(path)
