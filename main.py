@@ -41,7 +41,7 @@ class ParentFrame(wx.aui.AuiMDIParentFrame):
         item = menu.Append(-1, "Close parent")
         self.Bind(wx.EVT_MENU, self.OnDoClose, item)
         menu.AppendSeparator()
-        item = menu.Append(-1, "Exit")
+        item = menu.Append(-1, "Exit\tAlt-X")
         self.Bind(wx.EVT_MENU, self.OnDoExit, item)
         mb.Append(menu, "&File")
 
@@ -127,22 +127,25 @@ class VariantViewFrame(wx.aui.AuiMDIChildFrame):
         #SELECT t1.id, t1.path, t1.dt, t1.start, t1.stop, t2.cnt  FROM variant as t1 left join (select variant_id, count(*) as cnt from files group by variant_id) as t2 on t1.id=t2.variant_id
         self.m_grid1 = wx.grid.Grid( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, 0 )
         # Grid
-        self.m_grid1.CreateGrid( 5, 5 )
-        self.m_grid1.EnableEditing( True )
-        self.m_grid1.EnableGridLines( True )
-        self.m_grid1.EnableDragGridSize( False )
-        self.m_grid1.SetMargins( 0, 0 )
-        
-        # Columns
-        self.m_grid1.EnableDragColMove( False )
-        self.m_grid1.EnableDragColSize( True )
-        self.m_grid1.SetColLabelSize( 30 )
-        self.m_grid1.SetColLabelAlignment( wx.ALIGN_CENTRE, wx.ALIGN_CENTRE )
-        
-        # Rows
-        self.m_grid1.EnableDragRowSize( True )
-        self.m_grid1.SetRowLabelSize( 80 )
-        self.m_grid1.SetRowLabelAlignment( wx.ALIGN_CENTRE, wx.ALIGN_CENTRE )
+        self.conn = openDb()
+        table = VariantTable(self.conn)
+        self.m_grid1.SetTable(table, True)
+#         self.m_grid1.CreateGrid( 5, 5 )
+#         self.m_grid1.EnableEditing( True )
+#         self.m_grid1.EnableGridLines( True )
+#         self.m_grid1.EnableDragGridSize( False )
+#         self.m_grid1.SetMargins( 0, 0 )
+#         
+#         # Columns
+#         self.m_grid1.EnableDragColMove( False )
+#         self.m_grid1.EnableDragColSize( True )
+#         self.m_grid1.SetColLabelSize( 30 )
+#         self.m_grid1.SetColLabelAlignment( wx.ALIGN_CENTRE, wx.ALIGN_CENTRE )
+#         
+#         # Rows
+#         self.m_grid1.EnableDragRowSize( True )
+#         self.m_grid1.SetRowLabelSize( 80 )
+#         self.m_grid1.SetRowLabelAlignment( wx.ALIGN_CENTRE, wx.ALIGN_CENTRE )
         
         # Label Appearance
         
@@ -151,11 +154,46 @@ class VariantViewFrame(wx.aui.AuiMDIChildFrame):
         sizer_v.Add( self.m_grid1, 1, wx.ALL|wx.EXPAND, 5 ) 
         
         self.SetSizer(sizer_v)
-        self.Layout()       
+        self.Layout()      
+        
+    def __del__( self ):
+        self.conn.close()
 
     def onRefresh(self, evt):
         pass
 
+#----------------------------------------------------------------------
+
+class VariantTable(wx.grid.PyGridTableBase):
+    
+    def __init__(self, conn):
+        wx.grid.PyGridTableBase.__init__(self)
+        c = conn.cursor()
+        self.data = c.execute("""SELECT t1.id, t1.path, t1.dt, t1.start, 
+            t1.stop, t2.cnt  
+            FROM variant as t1 left join 
+            (select variant_id, count(*) as cnt from files group by variant_id) as t2 
+            on t1.id=t2.variant_id""").fetchall() 
+
+    def GetNumberRows(self):
+        return len(self.data)
+    
+    def GetNumberCols(self):
+        return 6 #ID, Дата, Путь, Файлов, Время, Запущен
+    
+    def IsEmptyCell(self, row, col):
+        return self.data[row][col] is not None
+    
+    def GetValue(self, row, col):
+        value = self.data[row][col]
+        if value is not None:
+            return value
+        else:
+            return ""
+        
+    def SetValue(self, row, col, value):
+        pass
+    
 #----------------------------------------------------------------------
 
 class MyPanel1 ( wx.Panel ):
@@ -233,14 +271,18 @@ class MyPanel1 ( wx.Panel ):
         self.s_time = 0
 #         self.d_time = 0
         self.conn = None
+        self.max_files = 0
     
     def __del__( self ):
-        print("закрываюся...")
+#         print("закрываюся...")
         if self.isStart:
             self.isStart = False
             self.th.join()
+            self.conn.close()
     
     def progress(self):
+        self.m_gauge2.Pulse()
+        self.m_staticText41.SetLabel(u"Подготовка...")
         self.t_files = 0
         self.s_files = 0
         self.t_time = time.time()
@@ -253,6 +295,7 @@ class MyPanel1 ( wx.Panel ):
         print finfo.bytes2human(test.used)
         print finfo.bytes2human(test.free)
         self.conn = openDb()
+        self.max_files = getLastFileCount(self.conn, self.m_dirPicker2.Path)
         id = addVariant(self.conn, self.m_dirPicker2.Path)
         self.walk(self.m_dirPicker2.Path, id)
         self.isStart = False
@@ -273,7 +316,10 @@ class MyPanel1 ( wx.Panel ):
                                          (self.t_files,
                                           self.t_files/(time.time()-self.s_time)) +
                                         time.strftime("%M:%S", time.localtime(time.time()-self.s_time)))
-        self.m_gauge2.SetValue((self.s_files*100)/self.s_files_e)        
+        if self.max_files == 0:
+            self.m_gauge2.SetValue((self.s_files*100)/self.s_files_e)
+        else:
+            self.m_gauge2.SetValue((self.t_files*100)/self.max_files)        
 
     def walk(self, d, id):
         try:
@@ -298,7 +344,7 @@ class MyPanel1 ( wx.Panel ):
           
     # Virtual event handlers, overide them in your derived class
     def onClosePane( self, event ):
-        print(u"Закрываю панель2")
+        self.conn.close()
         event.Skip()
     
     def onStart( self, event ):
@@ -369,7 +415,7 @@ def addFile(conn, dt):
     global dt_list
 #     c = conn.cursor()
     dt_list.append(dt)
-    if len(dt_list) >100:
+    if len(dt_list) >1000:
         addFileFlush(conn)
     
 def addFileFlush(conn):
@@ -379,6 +425,14 @@ def addFileFlush(conn):
         values (?,?,?,?,?,?,?,?);""", dt_list)
     conn.commit()
     dt_list = []
+    
+def getLastFileCount(conn, path):
+    c = conn.cursor()
+    row = c.execute("""SELECT max(id) FROM variant where path=?""", (path,)).fetchone()
+    if row[0] == None:
+        return 0
+    id = row[0]
+    return c.execute("""select count(*) from files where variant_id=?""", (id,)).fetchone()[0]
 
 def checkFile(path):
     stat = os.stat(path)
