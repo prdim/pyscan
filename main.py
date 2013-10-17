@@ -28,7 +28,7 @@ class ParentFrame(wx.aui.AuiMDIParentFrame):
         mb = self.MakeMenuBar()
         self.SetMenuBar(mb)
         self.CreateStatusBar()
-        self.PushStatusText(u"Готов")
+        self.SetStatusText(u"Готов")
         self.Bind(wx.EVT_CLOSE, self.OnDoClose)
 
     def MakeMenuBar(self):
@@ -120,6 +120,12 @@ class VariantViewFrame(wx.aui.AuiMDIChildFrame):
         button = wx.Button( self, wx.ID_ANY, u"Обновить", wx.DefaultPosition, wx.DefaultSize, 0 )
         button.Bind(wx.EVT_BUTTON, self.onRefresh)
         sizer_h.Add(button, 0, wx.ALL, 5)
+        button = wx.Button( self, wx.ID_ANY, u"Удалить", wx.DefaultPosition, wx.DefaultSize, 0 )
+        button.Bind(wx.EVT_BUTTON, self.onDelete)
+        sizer_h.Add(button, 0, wx.ALL, 5)
+        button = wx.Button( self, wx.ID_ANY, u"Оптимизировать", wx.DefaultPosition, wx.DefaultSize, 0 )
+        button.Bind(wx.EVT_BUTTON, self.onVacuum)
+        sizer_h.Add(button, 0, wx.ALL, 5)
         
         sizer_v = wx.BoxSizer(wx.VERTICAL)
         sizer_v.Add(sizer_h, 0, wx.EXPAND, 5)
@@ -127,9 +133,12 @@ class VariantViewFrame(wx.aui.AuiMDIChildFrame):
         #SELECT t1.id, t1.path, t1.dt, t1.start, t1.stop, t2.cnt  FROM variant as t1 left join (select variant_id, count(*) as cnt from files group by variant_id) as t2 on t1.id=t2.variant_id
         self.m_grid1 = wx.grid.Grid( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, 0 )
         # Grid
+        app.pf.PushStatusText(u"Чтение данных...")
+        t = time.time()
         self.conn = openDb()
-        table = VariantTable(self.conn)
-        self.m_grid1.SetTable(table, True)
+        self.table = VariantTable(self.conn)
+        self.m_grid1.SetTable(self.table, True, wx.grid.Grid.wxGridSelectRows)
+        app.pf.PushStatusText(u"Запрос выполнен за " + time.strftime("%M:%S", time.localtime(time.time()-t)))
 #         self.m_grid1.CreateGrid( 5, 5 )
 #         self.m_grid1.EnableEditing( True )
 #         self.m_grid1.EnableGridLines( True )
@@ -151,6 +160,8 @@ class VariantViewFrame(wx.aui.AuiMDIChildFrame):
         
         # Cell Defaults
         self.m_grid1.SetDefaultCellAlignment( wx.ALIGN_LEFT, wx.ALIGN_TOP )
+        self.m_grid1.AutoSize()
+        self.m_grid1.EnableEditing(False)
         sizer_v.Add( self.m_grid1, 1, wx.ALL|wx.EXPAND, 5 ) 
         
         self.SetSizer(sizer_v)
@@ -160,7 +171,35 @@ class VariantViewFrame(wx.aui.AuiMDIChildFrame):
         self.conn.close()
 
     def onRefresh(self, evt):
-        pass
+        app.pf.PushStatusText(u"Обновление данных...")
+        t = time.time()
+        self.table = VariantTable(self.conn)
+        self.m_grid1.SetTable(self.table, True, wx.grid.Grid.wxGridSelectRows)
+        app.pf.PushStatusText(u"Запрос выполнен за " + time.strftime("%M:%S", time.localtime(time.time()-t)))
+        self.m_grid1.ForceRefresh()
+        self.m_grid1.AutoSize()
+        
+    def onDelete(self, evt):
+        rows = self.m_grid1.GetSelectedRows()
+        t = time.time()
+        app.pf.PushStatusText(u"Удаление строк...")
+        for i in rows:
+            with self.conn:
+                id = self.table.data[i][0]
+                self.conn.execute("""delete from files where variant_id=?""", (id,))
+                self.conn.execute("""delete from variant where id=?""", (id,))
+        app.pf.PushStatusText(u"Обновление данных...")
+        self.table = VariantTable(self.conn)
+        self.m_grid1.SetTable(self.table, True, wx.grid.Grid.wxGridSelectRows)
+        app.pf.PushStatusText(u"Запрос выполнен за " + time.strftime("%M:%S", time.localtime(time.time()-t)))
+        self.m_grid1.ForceRefresh()
+        self.m_grid1.AutoSize()
+        
+    def onVacuum(self, evt):
+        app.pf.PushStatusText(u"Оптимизация базы данных...")
+        t = time.time()
+        self.conn.execute("""VACUUM""")
+        app.pf.PushStatusText(u"Запрос выполнен за " + time.strftime("%M:%S", time.localtime(time.time()-t)))
 
 #----------------------------------------------------------------------
 
@@ -169,7 +208,7 @@ class VariantTable(wx.grid.PyGridTableBase):
     def __init__(self, conn):
         wx.grid.PyGridTableBase.__init__(self)
         c = conn.cursor()
-        self.data = c.execute("""SELECT t1.id, t1.path, t1.dt, t1.start, 
+        self.data = c.execute("""SELECT t1.id, t1.dt, t1.path, t1.start, 
             t1.stop, t2.cnt  
             FROM variant as t1 left join 
             (select variant_id, count(*) as cnt from files group by variant_id) as t2 
@@ -179,17 +218,37 @@ class VariantTable(wx.grid.PyGridTableBase):
         return len(self.data)
     
     def GetNumberCols(self):
-        return 6 #ID, Дата, Путь, Файлов, Время, Запущен
+        return 5 #ID, Дата, Путь, Файлов, Время, Запущен
+    
+    def GetColLabelValue(self, col):
+        return (u"Дата", u"Путь", u"Файлов", u"Время", u"Запущен")[col]
+    
+    def GetRowLabelValue(self, row):
+        return self.data[row][0]
     
     def IsEmptyCell(self, row, col):
         return self.data[row][col] is not None
     
     def GetValue(self, row, col):
-        value = self.data[row][col]
-        if value is not None:
-            return value
-        else:
+        value = self.data[row][col+1]
+        if col==2:
+            if self.data[row][5] is None:
+                return ""
+            else:
+                return self.data[row][5]
+        if col==4:
+            if self.data[row][3] is None:
+                return ""
+            else:
+                return time.strftime("%H:%M:%S", time.localtime(self.data[row][3]))
+        if col==3:
+            if self.data[row][4] is None or self.data[row][3] is None:
+                return ""
+            else:
+                return time.strftime("%H:%M:%S", time.gmtime(self.data[row][4]-self.data[row][3]))
+        if value is None:
             return ""
+        return value
         
     def SetValue(self, row, col, value):
         pass
@@ -278,15 +337,13 @@ class MyPanel1 ( wx.Panel ):
         if self.isStart:
             self.isStart = False
             self.th.join()
-            self.conn.close()
+#             self.conn.close()
     
     def progress(self):
         self.m_gauge2.Pulse()
         self.m_staticText41.SetLabel(u"Подготовка...")
         self.t_files = 0
         self.s_files = 0
-        self.t_time = time.time()
-        self.s_time = self.t_time
         global dt_list
         dt_list = []
         test = finfo.disk_usage(self.m_dirPicker2.Path)
@@ -297,6 +354,8 @@ class MyPanel1 ( wx.Panel ):
         self.conn = openDb()
         self.max_files = getLastFileCount(self.conn, self.m_dirPicker2.Path)
         id = addVariant(self.conn, self.m_dirPicker2.Path)
+        self.t_time = time.time()
+        self.s_time = self.t_time
         self.walk(self.m_dirPicker2.Path, id)
         self.isStart = False
         addFileFlush(self.conn)
@@ -318,8 +377,12 @@ class MyPanel1 ( wx.Panel ):
                                         time.strftime("%M:%S", time.localtime(time.time()-self.s_time)))
         if self.max_files == 0:
             self.m_gauge2.SetValue((self.s_files*100)/self.s_files_e)
-        else:
-            self.m_gauge2.SetValue((self.t_files*100)/self.max_files)        
+        elif self.t_files>0 and (self.t_files<self.max_files):
+            self.m_gauge2.SetValue((self.t_files*100)/self.max_files)
+            self.m_staticText41.SetLabel(self.m_staticText41.GetLabel() + u", осталось: " +
+                                         time.strftime("%M:%S", 
+                                                       time.localtime((time.time()-self.s_time)*
+                                                                      (self.max_files-self.t_files)/self.max_files)))    
 
     def walk(self, d, id):
         try:
@@ -344,7 +407,7 @@ class MyPanel1 ( wx.Panel ):
           
     # Virtual event handlers, overide them in your derived class
     def onClosePane( self, event ):
-        self.conn.close()
+#         self.conn.close()
         event.Skip()
     
     def onStart( self, event ):
@@ -387,6 +450,7 @@ def openDb():
         atime int,
         mtime int,
         ctime int);""")
+    conn.execute("""create index if not exists files_index on files (variant_id asc)""")
     return conn
 
 def addVariant(conn, basePath):
