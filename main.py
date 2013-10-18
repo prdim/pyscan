@@ -8,6 +8,7 @@ Created on 30 сент. 2013 г.
 import wx
 import wx.aui
 import wx.grid
+import wx.html
 import os
 import finfo
 import threading
@@ -34,21 +35,23 @@ class ParentFrame(wx.aui.AuiMDIParentFrame):
     def MakeMenuBar(self):
         mb = wx.MenuBar()
         menu = wx.Menu()
-        item = menu.Append(-1, "Сканер\tCtrl-N")
+        item = menu.Append(-1, u"Сканер\tCtrl-N")
         self.Bind(wx.EVT_MENU, self.OnNewChild, item)
-        item = menu.Append(-1, "Варианты\tCtrl-M")
+        item = menu.Append(-1, u"Варианты\tCtrl-M")
         self.Bind(wx.EVT_MENU, self.OnVariantView, item)
-        item = menu.Append(-1, "Close parent")
+        item = menu.Append(-1, u"Сравнение\tCtrl-B")
+        self.Bind(wx.EVT_MENU, self.OnCompareView, item)
+        item = menu.Append(-1, u"Close parent")
         self.Bind(wx.EVT_MENU, self.OnDoClose, item)
         menu.AppendSeparator()
-        item = menu.Append(-1, "Exit\tAlt-X")
+        item = menu.Append(-1, u"Exit\tAlt-X")
         self.Bind(wx.EVT_MENU, self.OnDoExit, item)
-        mb.Append(menu, "&File")
+        mb.Append(menu, u"&File")
 
         menu = wx.Menu()
-        item = menu.Append(-1, "About")
+        item = menu.Append(-1, u"About")
         self.Bind(wx.EVT_MENU, self.OnDoAbout, item)
-        mb.Append(menu, "&Help")
+        mb.Append(menu, u"&Help")
         return mb
 
     def OnNewChild(self, evt):
@@ -59,6 +62,11 @@ class ParentFrame(wx.aui.AuiMDIParentFrame):
     def OnVariantView(self, evt):
         self.count += 1
         child = VariantViewFrame(self, self.count)
+        child.Activate()
+        
+    def OnCompareView(self, evt):
+        self.count += 1
+        child = CompareFilesFrame(self, self.count)
         child.Activate()
 
     def OnDoClose(self, evt):
@@ -78,8 +86,8 @@ class ParentFrame(wx.aui.AuiMDIParentFrame):
         info.Copyright = u"(c) Spec, 2013"
         info.Description = u"Это тестовая программа"
         info.Developers = (u"Spec",)
-        info.Name = "PyScan"
-        info.Version = "0.1"
+        info.Name = u"PyScan"
+        info.Version = u"0.1"
         wx.AboutBox(info);
 
 #----------------------------------------------------------------------
@@ -87,7 +95,7 @@ class ParentFrame(wx.aui.AuiMDIParentFrame):
 class ChildFrame(wx.aui.AuiMDIChildFrame):
     def __init__(self, parent, count):
         wx.aui.AuiMDIChildFrame.__init__(self, parent, -1,
-                                         title="Сканер: %d" % count)
+                                         title=u"Сканер: %d" % count)
 #         mb = parent.MakeMenuBar()
 #         menu = wx.Menu()
 #         item = menu.Append(-1, "This is child %d's menu" % count)
@@ -115,7 +123,7 @@ class ChildFrame(wx.aui.AuiMDIChildFrame):
 class VariantViewFrame(wx.aui.AuiMDIChildFrame):
     def __init__(self, parent, count):
         wx.aui.AuiMDIChildFrame.__init__(self, parent, -1,
-                                         title="Варианты: %d" % count)
+                                         title=u"Варианты: %d" % count)
         sizer_h = wx.BoxSizer(wx.HORIZONTAL)
         button = wx.Button( self, wx.ID_ANY, u"Обновить", wx.DefaultPosition, wx.DefaultSize, 0 )
         button.Bind(wx.EVT_BUTTON, self.onRefresh)
@@ -129,8 +137,6 @@ class VariantViewFrame(wx.aui.AuiMDIChildFrame):
         
         sizer_v = wx.BoxSizer(wx.VERTICAL)
         sizer_v.Add(sizer_h, 0, wx.EXPAND, 5)
-        #SELECT t1.id, t1.path, t1.dt, t1.start, t1.stop, t2.cnt  FROM variant as t1, (select variant_id, count(*) as cnt from files group by variant_id) as t2 where t1.id=t2.variant_id
-        #SELECT t1.id, t1.path, t1.dt, t1.start, t1.stop, t2.cnt  FROM variant as t1 left join (select variant_id, count(*) as cnt from files group by variant_id) as t2 on t1.id=t2.variant_id
         self.m_grid1 = wx.grid.Grid( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, 0 )
         # Grid
         app.pf.PushStatusText(u"Чтение данных...")
@@ -139,26 +145,7 @@ class VariantViewFrame(wx.aui.AuiMDIChildFrame):
         self.table = VariantTable(self.conn)
         self.m_grid1.SetTable(self.table, True, wx.grid.Grid.wxGridSelectRows)
         app.pf.PushStatusText(u"Запрос выполнен за " + time.strftime("%M:%S", time.localtime(time.time()-t)))
-#         self.m_grid1.CreateGrid( 5, 5 )
-#         self.m_grid1.EnableEditing( True )
-#         self.m_grid1.EnableGridLines( True )
-#         self.m_grid1.EnableDragGridSize( False )
-#         self.m_grid1.SetMargins( 0, 0 )
-#         
-#         # Columns
-#         self.m_grid1.EnableDragColMove( False )
-#         self.m_grid1.EnableDragColSize( True )
-#         self.m_grid1.SetColLabelSize( 30 )
-#         self.m_grid1.SetColLabelAlignment( wx.ALIGN_CENTRE, wx.ALIGN_CENTRE )
-#         
-#         # Rows
-#         self.m_grid1.EnableDragRowSize( True )
-#         self.m_grid1.SetRowLabelSize( 80 )
-#         self.m_grid1.SetRowLabelAlignment( wx.ALIGN_CENTRE, wx.ALIGN_CENTRE )
-        
-        # Label Appearance
-        
-        # Cell Defaults
+
         self.m_grid1.SetDefaultCellAlignment( wx.ALIGN_LEFT, wx.ALIGN_TOP )
         self.m_grid1.AutoSize()
         self.m_grid1.EnableEditing(False)
@@ -178,8 +165,12 @@ class VariantViewFrame(wx.aui.AuiMDIChildFrame):
         app.pf.PushStatusText(u"Запрос выполнен за " + time.strftime("%M:%S", time.localtime(time.time()-t)))
         self.m_grid1.ForceRefresh()
         self.m_grid1.AutoSize()
+        self.Layout()
+        evt.Skip()
         
     def onDelete(self, evt):
+        if not userConfirm(self, u"Удалить выделенные записи?\nОтмена удаления будет невозможна."):
+            return
         rows = self.m_grid1.GetSelectedRows()
         t = time.time()
         app.pf.PushStatusText(u"Удаление строк...")
@@ -194,12 +185,17 @@ class VariantViewFrame(wx.aui.AuiMDIChildFrame):
         app.pf.PushStatusText(u"Запрос выполнен за " + time.strftime("%M:%S", time.localtime(time.time()-t)))
         self.m_grid1.ForceRefresh()
         self.m_grid1.AutoSize()
+        self.Layout()
+        evt.Skip()
         
     def onVacuum(self, evt):
+        if not userConfirm(self, u"Провести оптимизацию базы данных?\nПроцедура может занять длительное время."):
+            return
         app.pf.PushStatusText(u"Оптимизация базы данных...")
         t = time.time()
         self.conn.execute("""VACUUM""")
         app.pf.PushStatusText(u"Запрос выполнен за " + time.strftime("%M:%S", time.localtime(time.time()-t)))
+        evt.Skip()
 
 #----------------------------------------------------------------------
 
@@ -253,6 +249,77 @@ class VariantTable(wx.grid.PyGridTableBase):
     def SetValue(self, row, col, value):
         pass
     
+#----------------------------------------------------------------------
+
+class CompareFilesFrame(wx.aui.AuiMDIChildFrame):
+    def __init__(self, parent, count):
+        wx.aui.AuiMDIChildFrame.__init__(self, parent, -1,
+                                         title=u"Варианты: %d" % count)
+        sizer_v = wx.BoxSizer( wx.VERTICAL )
+        sizer_h = wx.BoxSizer( wx.HORIZONTAL )
+        
+        self.choice1 = wx.Choice( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, [], 0 )
+        self.choice1.SetToolTipString(u"Месторасположение")
+        sizer_h.Add( self.choice1, 0, wx.ALL, 5 )
+        self.choice2 = wx.Choice( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, [], 0 )
+        self.choice2.SetToolTipString(u"Вариант 1")
+        sizer_h.Add( self.choice2, 0, wx.ALL, 5 )
+        self.choice3 = wx.Choice( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, [], 0 )
+        self.choice3.SetToolTipString(u"Вариант 2")
+        sizer_h.Add( self.choice3, 0, wx.ALL, 5 )
+        self.button = wx.Button( self, wx.ID_ANY, u"Сравнить", wx.DefaultPosition, wx.DefaultSize, 0 )
+        sizer_h.Add( self.button, 0, wx.ALL, 5 )
+        sizer_v.Add( sizer_h, 0, wx.EXPAND, 5 )
+        self.htmlWin = wx.html.HtmlWindow( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.html.HW_SCROLLBAR_AUTO )
+        sizer_v.Add( self.htmlWin, 1, wx.ALL|wx.EXPAND, 5 )
+        self.SetSizer( sizer_v )
+        
+        self.conn = openDb()
+        self.fillData1()
+        
+        self.Layout()
+        self.button.Bind( wx.EVT_BUTTON, self.onStart )
+        self.choice1.Bind( wx.EVT_CHOICE, self.onChanged )
+        
+    def fillData1(self):
+        self.choice1.Clear() 
+        rows = self.conn.execute("""SELECT path FROM variant group by path order by path""").fetchall()
+        for r in rows:
+            self.choice1.Append(r[0])
+            
+    def fillData2(self):
+        p = self.choice1.GetStringSelection()
+        self.choice2.Clear()
+        self.choice3.Clear()
+        rows = self.conn.execute("""SELECT id, dt, start FROM variant where path =?""",(p,))
+        i = 0
+        for r in rows:
+            self.choice2.Append("%i" % r[0] + ' - ' + r[1] + ' ' + time.strftime("%H:%M:%S", time.localtime(r[2])))
+            self.choice3.Append("%i" % r[0] + ' - ' + r[1] + ' ' + time.strftime("%H:%M:%S", time.localtime(r[2])))
+            i += 1
+        if i>1: # выбираем по умолчанию предпоследний и последний вариант для сравнения
+            self.choice3.SetSelection(i-1)
+            self.choice2.SetSelection(i-2)
+        
+    def __del__( self ):
+        self.conn.close()
+            
+    def onStart( self, event ):
+        if self.choice2.GetSelection() == wx.NOT_FOUND:
+            return
+        if self.choice3.GetSelection() == wx.NOT_FOUND:
+            return
+        p1 = int(self.choice2.GetStringSelection().split(" -")[0])
+        p2 = int(self.choice3.GetStringSelection().split(" -")[0])
+        print p1, p2
+        #select t1.p, "del" as type from (SELECT path as p FROM files where variant_id = 45) as t1 left join (SELECT path as p FROM files where variant_id = 56) as t2 on t1.p=t2.p where t2.p is null
+        #
+        event.Skip()
+        
+    def onChanged( self, event ):
+        self.fillData2()
+        event.Skip()
+
 #----------------------------------------------------------------------
 
 class MyPanel1 ( wx.Panel ):
@@ -369,6 +436,7 @@ class MyPanel1 ( wx.Panel ):
             self.progressUpdateNow(path)
             self.t_time = time.time()
 #             self.d_files = self.t_files
+
     def progressUpdateNow(self, path):
         self.m_staticText4.SetLabel(path)
         self.m_staticText41.SetLabel(u"Обработано файлов: %i, скорость: %i файлов/сек, время: " % 
@@ -380,9 +448,9 @@ class MyPanel1 ( wx.Panel ):
         elif self.t_files>0 and (self.t_files<self.max_files):
             self.m_gauge2.SetValue((self.t_files*100)/self.max_files)
             self.m_staticText41.SetLabel(self.m_staticText41.GetLabel() + u", осталось: " +
-                                         time.strftime("%M:%S", 
-                                                       time.localtime((time.time()-self.s_time)*
-                                                                      (self.max_files-self.t_files)/self.max_files)))    
+                                         time.strftime("%H:%M:%S", 
+                                                       time.gmtime((time.time()-self.s_time)*
+                                                                      (self.max_files-self.t_files)/self.t_files)))    
 
     def walk(self, d, id):
         try:
@@ -498,10 +566,13 @@ def getLastFileCount(conn, path):
     id = row[0]
     return c.execute("""select count(*) from files where variant_id=?""", (id,)).fetchone()[0]
 
-def checkFile(path):
-    stat = os.stat(path)
-#     print path, stat.st_size, stat.st_atime, stat.st_mtime, stat.st_ctime
-
+def userConfirm(parent, text):
+    dlg = wx.MessageDialog(parent, text, u"Подтверждение", 
+                           wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION)
+    y = dlg.ShowModal()
+    dlg.Destroy()
+    return y == wx.ID_YES
+    
 #----------------------------------------------------------------------
 
 class MyApp(wx.App):
