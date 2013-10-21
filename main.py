@@ -280,6 +280,7 @@ class CompareFilesFrame(wx.aui.AuiMDIChildFrame):
         self.Layout()
         self.button.Bind( wx.EVT_BUTTON, self.onStart )
         self.choice1.Bind( wx.EVT_CHOICE, self.onChanged )
+        self.htmlWin.Bind( wx.html.EVT_HTML_LINK_CLICKED, self.onLink )
         
     def fillData1(self):
         self.choice1.Clear() 
@@ -291,7 +292,7 @@ class CompareFilesFrame(wx.aui.AuiMDIChildFrame):
         p = self.choice1.GetStringSelection()
         self.choice2.Clear()
         self.choice3.Clear()
-        rows = self.conn.execute("""SELECT id, dt, start FROM variant where path =?""",(p,))
+        rows = self.conn.execute("""SELECT id, dt, start FROM variant where path =?""",(p,)).fetchall()
         i = 0
         for r in rows:
             self.choice2.Append("%i" % r[0] + ' - ' + r[1] + ' ' + time.strftime("%H:%M:%S", time.localtime(r[2])))
@@ -311,14 +312,58 @@ class CompareFilesFrame(wx.aui.AuiMDIChildFrame):
             return
         p1 = int(self.choice2.GetStringSelection().split(" -")[0])
         p2 = int(self.choice3.GetStringSelection().split(" -")[0])
-        print p1, p2
+#         print p1, p2
         #select t1.p, "del" as type from (SELECT path as p FROM files where variant_id = 45) as t1 left join (SELECT path as p FROM files where variant_id = 56) as t2 on t1.p=t2.p where t2.p is null
         #
+        t = time.time()
+        app.pf.PushStatusText(u"Сравнение данных...")
+        v1 = {}
+        c = self.conn.cursor()
+        for r in c.execute("""select path, size, mtime from files where variant_id = ?""", (p1,)):
+            v1[r[0]] = (r[1], r[2], "del")
+        print len(v1)
+        for r in c.execute("""select path, size, mtime from files where variant_id = ?""", (p2,)):
+            if v1.has_key(r[0]):
+                if v1[r[0]][0] == r[1] and round(v1[r[0]][1]) == round(r[2]):
+                    #такой элемент существовал раньше - не изменился, удаляем
+                    del v1[r[0]]
+                else:
+                    v1[r[0]] = (r[1], r[2], "chg")
+            else:
+                v1[r[0]] = (r[1], r[2], "new")
+        html = ["<HTML><BODY><TABLE>"]
+        skeys = v1.keys()
+        skeys.sort()
+        for r in skeys:
+            # не буюем показывать лишнее
+            if r.find(".tmp") >=0:
+                continue
+            if r.find(".lnk") >=0:
+                continue
+            if r.find("Thumbs.db") >=0:
+                continue
+            if r.find("~$") >=0:
+                continue
+            if v1[r][2] == "del":
+                html.append("<TR><TD>" + v1[r][2] + "</TD><TD>" + r + "</TD></TR>")
+            elif v1[r][2] == "new":
+                html.append("<TR><TD><b>" + v1[r][2] + "</b></TD><TD><b> <a href=\"" + r + "\"> " + r + "</a></b></TD></TR>")
+            else:
+                html.append("<TR><TD>" + v1[r][2] + "</TD><TD> <a href=\"" + r + "\"> " + r + "</a></TD></TR>")
+        html.append("</BODY></HTML>")
+        self.htmlWin.SetPage("".join(html))
+        print len(v1)
+        app.pf.PushStatusText(u"Найдено файлов: %i." % (len(v1),) + "Сравнеие выполнено за " + time.strftime("%M:%S", time.localtime(time.time()-t)))
         event.Skip()
         
     def onChanged( self, event ):
         self.fillData2()
         event.Skip()
+        
+    def onLink(self, event):
+        print event.GetLinkInfo().GetHref()
+        os.startfile(event.GetLinkInfo().GetHref())
+        
 
 #----------------------------------------------------------------------
 
