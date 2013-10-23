@@ -559,6 +559,8 @@ class MyPanel1 ( wx.Panel ):
         self.m_button3 = wx.Button( self, wx.ID_ANY, u"Остановка", wx.DefaultPosition, wx.DefaultSize, 0 )
         bSizer5.Add( self.m_button3, 0, wx.ALL, 5 )
         
+        self.m_button4 = wx.Button( self, wx.ID_ANY, u"Групповая обработка", wx.DefaultPosition, wx.DefaultSize, 0 )
+        bSizer5.Add( self.m_button4, 0, wx.ALL, 5 )
         
         bSizer1.Add( bSizer5, 0, wx.EXPAND, 5 )
         
@@ -570,6 +572,7 @@ class MyPanel1 ( wx.Panel ):
 #         self.Bind( wx.EVT_CLOSE, self.onClosePane )
         self.m_button2.Bind( wx.EVT_BUTTON, self.onStart )
         self.m_button3.Bind( wx.EVT_BUTTON, self.onStop )
+        self.m_button4.Bind( wx.EVT_BUTTON, self.onBathStart )
         
         self.isStart = False
         self.t_files = 0
@@ -600,18 +603,39 @@ class MyPanel1 ( wx.Panel ):
         print finfo.bytes2human(test.total)
         print finfo.bytes2human(test.used)
         print finfo.bytes2human(test.free)
-        self.conn = openDb()
+#         self.conn = openDb()
         self.max_files = getLastFileCount(self.conn, self.m_dirPicker2.Path)
         id = addVariant(self.conn, self.m_dirPicker2.Path)
         self.t_time = time.time()
         self.s_time = self.t_time
         self.walk(self.m_dirPicker2.Path, id)
-        self.isStart = False
+#         self.isStart = False
         addFileFlush(self.conn)
         updateVariant(self.conn, id, time.time())
         self.progressUpdateNow(self.m_dirPicker2.Path)
-        self.conn.close()
+#         self.conn.close()
         self.m_staticText4.SetLabel(u"Завершено успешно.")
+        
+    def progress1(self):
+        self.conn = openDb()
+        self.progress()
+        self.conn.close()
+        self.isStart = False
+        
+    def progressMulti(self):
+        self.conn = openDb()
+        ps = []
+        for r in self.conn.execute("""SELECT path 
+                              from pathcust where active=1 order by id""").fetchall():
+            ps.append(r[0])
+        i = 1
+        for p in ps:
+            app.pf.PushStatusText(u"Обработка %i из %i" % (i, len(ps),))
+            self.m_dirPicker2.Path = p
+            self.progress()
+            i=i+1
+        self.conn.close()
+        self.isStart = False
         
     def progressUpdate(self, path):
         if (time.time() - self.t_time) > 1:
@@ -668,7 +692,7 @@ class MyPanel1 ( wx.Panel ):
 #             self.Parent.Parent.Parent.PushStatusText(u"Нужно выбрать каталог!")
             app.pf.PushStatusText(u"Нужно выбрать каталог!")
         else:
-            self.th = threading.Thread(target=self.progress)
+            self.th = threading.Thread(target=self.progress1)
             self.isStart = True
             self.th.start()
         event.Skip()
@@ -676,6 +700,16 @@ class MyPanel1 ( wx.Panel ):
     def onStop( self, event ):
         self.isStart = False
         print("Stop")
+        event.Skip()
+        
+    def onBathStart( self, event ):
+        if self.isStart:
+            app.pf.PushStatusText(u"Процесс уже запущен!")
+            return
+        else:
+            self.th = threading.Thread(target=self.progressMulti)
+            self.isStart = True
+            self.th.start()
         event.Skip()
 
 #----------------------------------------------------------------------
