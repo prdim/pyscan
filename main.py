@@ -41,6 +41,8 @@ class ParentFrame(wx.aui.AuiMDIParentFrame):
         self.Bind(wx.EVT_MENU, self.OnVariantView, item)
         item = menu.Append(-1, u"Сравнение\tCtrl-B")
         self.Bind(wx.EVT_MENU, self.OnCompareView, item)
+        item = menu.Append(-1, u"Редактор путей\tCtrl-E")
+        self.Bind(wx.EVT_MENU, self.OnBathPathView, item)
         item = menu.Append(-1, u"Close parent")
         self.Bind(wx.EVT_MENU, self.OnDoClose, item)
         menu.AppendSeparator()
@@ -67,6 +69,11 @@ class ParentFrame(wx.aui.AuiMDIParentFrame):
     def OnCompareView(self, evt):
         self.count += 1
         child = CompareFilesFrame(self, self.count)
+        child.Activate()
+        
+    def OnBathPathView(self, evt):
+        self.count += 1
+        child = BathPathEditFrame(self, self.count)
         child.Activate()
 
     def OnDoClose(self, evt):
@@ -147,7 +154,8 @@ class VariantViewFrame(wx.aui.AuiMDIChildFrame):
         app.pf.PushStatusText(u"Запрос выполнен за " + time.strftime("%M:%S", time.localtime(time.time()-t)))
 
         self.m_grid1.SetDefaultCellAlignment( wx.ALIGN_LEFT, wx.ALIGN_TOP )
-        self.m_grid1.AutoSize()
+#         self.m_grid1.AutoSize()
+        self.m_grid1.AutoSizeColumns(False)
         self.m_grid1.EnableEditing(False)
         sizer_v.Add( self.m_grid1, 1, wx.ALL|wx.EXPAND, 5 ) 
         
@@ -185,6 +193,7 @@ class VariantViewFrame(wx.aui.AuiMDIChildFrame):
         app.pf.PushStatusText(u"Запрос выполнен за " + time.strftime("%M:%S", time.localtime(time.time()-t)))
         self.m_grid1.ForceRefresh()
         self.m_grid1.AutoSize()
+#         self.m_grid1.AutoSizeColumns(False)
         self.Layout()
         evt.Skip()
         
@@ -251,12 +260,140 @@ class VariantTable(wx.grid.PyGridTableBase):
     
 #----------------------------------------------------------------------
 
+class BathPathEditFrame(wx.aui.AuiMDIChildFrame):
+    def __init__(self, parent, count):
+        wx.aui.AuiMDIChildFrame.__init__(self, parent, -1,
+                                         title=u"Редактор путей для пакетного сканера: %d" % count)
+        sizer_h = wx.BoxSizer(wx.HORIZONTAL)
+        button = wx.Button( self, wx.ID_ANY, u"Добавить", wx.DefaultPosition, wx.DefaultSize, 0 )
+        button.Bind(wx.EVT_BUTTON, self.onAdd)
+        sizer_h.Add(button, 0, wx.ALL, 5)
+        button = wx.Button( self, wx.ID_ANY, u"Удалить", wx.DefaultPosition, wx.DefaultSize, 0 )
+        button.Bind(wx.EVT_BUTTON, self.onDelete)
+        sizer_h.Add(button, 0, wx.ALL, 5)
+                
+        sizer_v = wx.BoxSizer(wx.VERTICAL)
+        sizer_v.Add(sizer_h, 0, wx.EXPAND, 5)
+        self.m_grid1 = wx.grid.Grid( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, 0 )
+        # Grid
+        app.pf.PushStatusText(u"Чтение данных...")
+        t = time.time()
+        self.conn = openDb()
+        self.table = BathPathTable(self.conn)
+        self.m_grid1.SetTable(self.table, True, wx.grid.Grid.wxGridSelectCells)
+        app.pf.PushStatusText(u"Запрос выполнен за " + time.strftime("%M:%S", time.localtime(time.time()-t)))
+        self.m_grid1.SetDefaultCellAlignment( wx.ALIGN_LEFT, wx.ALIGN_TOP )
+        self.m_grid1.SetRowLabelSize(15)
+        self.m_grid1.AutoSizeColumns(False)
+        sizer_v.Add( self.m_grid1, 1, wx.ALL|wx.EXPAND, 5 ) 
+        
+        self.SetSizer(sizer_v)
+        self.Layout()
+        
+    def __del__( self ):
+        self.conn.close()
+        
+    def onAdd(self, evt):
+        self.table.addRow()
+    
+    def onDelete(self, evt):
+        if not userConfirm(self, u"Удалить выделенную строку?"):
+            return
+        rows = self.m_grid1.GetSelectedRows()
+        if len(rows) == 0:
+            return
+        id = self.table.GetValue(rows[0],0)
+        if id != '':
+            self.conn.execute("""delete from pathcust where id=?""", (id,))
+        self.table = BathPathTable(self.conn)
+        self.m_grid1.SetTable(self.table, True, wx.grid.Grid.wxGridSelectCells)
+        self.m_grid1.AutoSizeColumns(False)
+        self.m_grid1.ForceRefresh()
+
+#----------------------------------------------------------------------
+
+class BathPathTable(wx.grid.PyGridTableBase):
+    
+    def __init__(self, conn):
+        wx.grid.PyGridTableBase.__init__(self)
+        self.conn = conn
+        self.data = []
+        for r in conn.execute("""SELECT id, path, active 
+                              from pathcust order by id""").fetchall():
+            self.data.append([r[0],r[1],r[2]])
+        t = []
+        for r in conn.execute("""SELECT path FROM variant group by path order by path""").fetchall():
+            t.append(r[0])
+        self.pathlist = ','.join(t)
+            
+    def addRow(self):
+        self.data.append(['','',0])
+        self.GetView().ProcessTableMessage(wx.grid.GridTableMessage(self,wx.grid.GRIDTABLE_NOTIFY_ROWS_APPENDED,1))
+
+    def GetNumberRows(self):
+        return len(self.data)
+    
+    def GetNumberCols(self):
+        return 3
+    
+    def GetTypeName(self, row, col):
+        if col == 0:
+            return wx.grid.GRID_VALUE_NUMBER
+        elif col == 1:
+            return wx.grid.GRID_VALUE_CHOICE + ':' + self.pathlist
+        else:
+            return wx.grid.GRID_VALUE_BOOL
+    
+    def GetColLabelValue(self, col):
+        return (u"Порядок", u"Путь", u"Активный")[col]
+    
+    def GetRowLabelValue(self, row):
+        return ''
+    
+    def IsEmptyCell(self, row, col):
+        return self.data[row][col] is not None
+    
+    def GetValue(self, row, col):
+        value = self.data[row][col]
+        if value is None:
+            return ""
+        return value
+        
+    def SetValue(self, row, col, value):
+        oldVal = self.data[row][col]
+        if value == oldVal:
+            return
+        if col == 0:
+            if oldVal == '':
+                self.conn.execute("""insert into pathcust (id, path, active) values (?,?,?)""", 
+                                  (value, self.data[row][1], self.data[row][2],))
+                self.conn.commit()
+            else:
+                self.conn.execute("""update pathcust set id=? where id=?""",
+                                  (value, oldVal,))
+                self.conn.commit()
+        elif col == 1:
+            if self.data[row][0] != '':
+                self.conn.execute("""update pathcust set path=? where id=?""",
+                                  (value, self.data[row][0],))
+                self.conn.commit()
+        elif col == 2:
+            if self.data[row][0] != '':
+                self.conn.execute("""update pathcust set active=? where id=?""",
+                                  (value, self.data[row][0],))
+                self.conn.commit()
+        print value
+        self.data[row][col] = value
+
+#----------------------------------------------------------------------
+
 class CompareFilesFrame(wx.aui.AuiMDIChildFrame):
     def __init__(self, parent, count):
         wx.aui.AuiMDIChildFrame.__init__(self, parent, -1,
-                                         title=u"Варианты: %d" % count)
+                                         title=u"Сравнение: %d" % count)
         sizer_v = wx.BoxSizer( wx.VERTICAL )
-        sizer_h = wx.BoxSizer( wx.HORIZONTAL )
+#         sizer_h = wx.BoxSizer( wx.HORIZONTAL )
+        sizer_h = wx.WrapSizer()
         
         self.choice1 = wx.Choice( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, [], 0 )
         self.choice1.SetToolTipString(u"Месторасположение")
@@ -564,6 +701,10 @@ def openDb():
         mtime int,
         ctime int);""")
     conn.execute("""create index if not exists files_index on files (variant_id asc)""")
+    conn.execute("""create table if not exists pathcust (
+        id int primary key not null,
+        path text,
+        active boolean);""")
     return conn
 
 def addVariant(conn, basePath):
